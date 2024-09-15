@@ -307,9 +307,8 @@ class TapAnalysis(object):
         self.discard = discard
         np_samples = np.array(samples)
         self.time = np_samples[:, 0]
-        self.force = np_samples[:, 1]
+        self.force = tap_filter.filtfilt(np_samples[:, 1])
         self.force_graph = ForceGraph(self.time, self.force)
-        self.force = tap_filter.filtfilt(self.force)
         self.sample_time = np.average(np.diff(self.time))
         self.r_squared_widths = [int((n * 0.01) // self.sample_time)
                                  for n in range(2, 7)]
@@ -741,8 +740,12 @@ class ProbeSessionContext():
         epos = phoming.probing_move(mcu_probe, pos, speed)
         pullback_end_time = self.pullback_move()
         pullback_end_pos = toolhead.get_position()
-        samples = self.collector.collect_until(pullback_end_time
+        samples, errors = self.collector.collect_until(pullback_end_time
                                                + self.pullback_extra_time)
+        if errors:
+            raise self.printer.command_error(
+                "Sensor reported errors while homing: %i errors, %i overflows"
+                % (errors[0], errors[1]))
         self.collector = None
         ppa = TapAnalysis(self.printer, samples, self.tap_filter)
         ppa.analyze()
@@ -837,10 +840,10 @@ class LoadCellEndstop:
     def _config_commands(self):
         self._mcu.add_config_cmd("config_load_cell_endstop oid=%d"
                                  % (self._oid,))
-        self._mcu.add_config_cmd("load_cell_endstop_home oid=%d trsync_oid=0"
-            " trigger_reason=0 error_reason=%i clock=0 sample_count=0"
-            " rest_ticks=0 timeout=0" % (self._oid, self.REASON_SENSOR_ERROR)
-                                 , on_restart=True)
+        #self._mcu.add_config_cmd("load_cell_endstop_home oid=%d trsync_oid=0"
+        #    " trigger_reason=0 error_reason=%i clock=0 sample_count=0"
+        #    " rest_ticks=0 timeout=0" % (self._oid, self.REASON_SENSOR_ERROR)
+        #                         , on_restart=True)
         # configure filter:
         cmd = ("config_filter_section_load_cell_endstop oid=%d n_sections=%d"
                " section_idx=%d sos0=%i sos1=%i sos2=%i sos3=%i sos4=%i")
@@ -852,8 +855,8 @@ class LoadCellEndstop:
             args = (self._oid, n_section, i, section[0], section[1],
                     section[2], section[3], section[4])
             # TODO: are both needed??
-            self._mcu.add_config_cmd(cmd % args, is_init=True)
-            self._mcu.add_config_cmd(cmd % args, on_restart=True)
+            self._mcu.add_config_cmd(cmd % args)
+            #self._mcu.add_config_cmd(cmd % args, on_restart=True)
 
     def _build_config(self):
         # Lookup commands
@@ -919,7 +922,6 @@ class LoadCellEndstop:
         rounding_shift = int(max(0, storage_bits - safe_bits))
         # grams per count, in rounded units
         grams_per_count = 1. / (counts_per_gram / (2 ** rounding_shift))
-        logging.info("Set endstop range: %s, %s, %s" % (trigger_min, trigger_max, tare_counts))
         args = [self._oid, safety_min, safety_max, filter_min, filter_max,
                 trigger_min, trigger_max, tare_counts,
                 as_fixedQ12(self.continuous_trigger_force),
@@ -934,8 +936,12 @@ class LoadCellEndstop:
         toolhead = self.printer.lookup_object('toolhead')
         collector = self._load_cell.get_collector()
         # collect tare_samples AFTER current move ends
-        collector.collect_until(toolhead.get_last_move_time())
-        tare_samples = collector.collect_min(self.tare_samples)
+        collector.start_collecting(min_time=toolhead.get_last_move_time())
+        tare_samples, errors = collector.collect_min(self.tare_samples)
+        if errors:
+            raise self.printer.command_error(
+            "Sensor reported errors while homing: %i errors, %i overflows"
+                              % (errors[0], errors[1]))
         tare_counts = np.average(np.array(tare_samples)[:, 2].astype(float))
         self.set_endstop_range(int(tare_counts))
 
