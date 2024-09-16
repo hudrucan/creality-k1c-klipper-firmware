@@ -4812,6 +4812,12 @@ sensor_type:
 #   each probe. The default value is: sample_per_second * (1 / 60) * 4. This
 #   collects samples from 4 cycles of 60Hz mains power to cancel power line
 #   noise.
+#pullback_dist:
+#   The length of the pullback move. The default is 0.1mm and work well for
+#   most beds. On very springy beds this may need to be increased.
+#pullback_speed:
+#   The speed of the pullback move. The default value is 1.0 micron per sensor
+#   sample. Increasing this value will speed up the move and reduce accuracy.
 #z_offset:
 #speed:
 #samples:
