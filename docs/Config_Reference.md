@@ -4873,18 +4873,20 @@ sensor_type:
 #   This must be one of the supported bulk ADC sensor types and support
 #   load cell endstops on the mcu.
 #counts_per_gram:
+#reverse:
 #reference_tare_counts:
 #   These parameters must be configured before the probe will operate.
 #   See the [load_cell] section for further details.
 #safety_limit: 1000
 #   The safe limit for probing force relative to the reference_tare_counts on
 #   the load_cell. The default is +/-1Kg.
-#trigger_force: 50.0
+#trigger_force: 75.0
 #   The force that the probe will trigger at. 50g is the default.
 #continuous_tare_highpass: 0.8
-#   Enable optional continuous taring while homing & probing to reject drift.
-#   The value is a frequency, in Hz, below which drift will be ignored.This
-#   option requires the SciPy library. Default: None
+#   Enable optional (but strongly recommended) continuous taring while homing
+#   & probing to reject drift. The value is a frequency, in Hz, below which
+#   drift will be ignored. This option requires the SciPy library.
+#   Default: None
 #continuous_tare_lowpass: 100.0
 #   The value is a frequency, in Hz, above which high frequency noise in the
 #   load cell will be igfiltered outnored. If this option is set,
@@ -4897,9 +4899,6 @@ sensor_type:
 #   Controls how narrow the range of frequencies are that the notch filter
 #   removes. Larger numbers produce a narrower filter. Minimum value is 0.5 and
 #   maximum is 3.0. Default: 2.0
-#continuous_tare_trigger_force_grams: 40.0
-#   The force that the probe will trigger at whe using the continuous tearing
-#   filter. 40g is the default.
 #trigger_count: 1
 #   The number of samples over the trigger_force_grams threshold that will cause
 #   the probe to trigger. 1 is the default.
@@ -4908,6 +4907,13 @@ sensor_type:
 #   each probe. The default value is: sample_per_second * (1 / 60) * 4. This
 #   collects samples from 4 cycles of 60Hz mains power to cancel power line
 #   noise.
+#pullback_dist:
+#   The length of the pullback move. The default is 0.2mm and is a safe
+#   starting point for most beds. This can be decreased if the motion system
+# is very ridgid
+#pullback_speed:
+#   The speed of the pullback move. The default value is 1.0 micron per sensor
+#   sample. Increasing this value will speed up the move and reduce accuracy.
 #z_offset:
 #speed:
 #samples:
