@@ -69,6 +69,18 @@ class AutoZOffsetCalibration:
                 raise config.error(
                     "LC_AutoZOffset: Check the x and y offset from [probe] - it seems both are 0 and the Probe can't be at the same position as the nozzle :-)"
                 )
+    
+        # check if a eddy is installed
+        elif config.has_section("probe_eddy_current"):
+            probe = config.getsection('probe_eddy_current')
+            self.x_offset = probe.getfloat('x_offset', note_valid=False)
+            self.y_offset = probe.getfloat('y_offset', note_valid=False)
+            # check if a possible valid offset is set for probe
+            if ((self.x_offset == 0) and (self.y_offset == 0)):
+                raise config.error(
+                    "LC_AutoZOffset: Check the x and y offset from [probe] - it seems both are 0 and the Probe can't be at the same position as the nozzle :-)"
+                )
+
         else:
             raise config.error(
                 "LC_AutoZOffset: No bltouch or probe in configured in your system - check your setup."
