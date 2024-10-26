@@ -31,8 +31,7 @@ class AutoZOffsetCalibration:
 
     def __init__(self, config):
         self.printer = config.get_printer()
-        x_pos_center, y_pos_center = config.getfloatlist("center_xy_position",
-                                                         count=2)
+        x_pos_center, y_pos_center = config.getfloatlist("center_xy_position", count=2)
         self.center_x_pos, self.center_y_pos = x_pos_center, y_pos_center
         self.z_hop = config.getfloat("z_hop", default=10.0)
         self.z_hop_speed = config.getfloat('z_hop_speed', 15., above=0.)
@@ -43,7 +42,8 @@ class AutoZOffsetCalibration:
         self.offset_min = config.getfloat('offset_min', -2)
         self.offset_max = config.getfloat('offset_max', 2)
         self.gcode = self.printer.lookup_object('gcode')
-        self.gcode_move = self.printer.lookup_object('gcode_move')
+        # self.gcode_move = self.printer.lookup_object('gcode_move')
+        self.gcode_move = self.printer.load_object(config, 'gcode_move')
         self.gcode.register_command("LC_AUTO_Z_OFFSET",
                                     self.cmd_AUTO_Z_OFFSET,
                                     desc=self.cmd_AUTO_Z_OFFSET_help)
