@@ -186,7 +186,8 @@ class Calibrater:
 
         # move to point to probe
         self._move_helper((probe_points[self.current_point_index][0],
-                           probe_points[self.current_point_index][1], None))
+                           probe_points[self.current_point_index][1], 
+                           self.horizontal_move_z))
 
         # probe the point
         pos = probe.run_single_probe(self.probe, self.gcmd)
@@ -224,10 +225,6 @@ class Calibrater:
             else:
                 # move to next point
                 self.current_point_index += 1
-
-                # horizontal_move_z (to prevent probe trigger or hitting bed)
-                self._move_helper((None, None, self.horizontal_move_z))
-
                 self._calibration(probe_points, nozzle_points, interval)
         return callback
 
