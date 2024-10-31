@@ -218,6 +218,9 @@ class Calibrater:
                 return
             z_offset = self.current_measured_z - kin_pos[2]
             self.results.append(z_offset)
+
+            toolhead = self.printer.lookup_object('toolhead')
+            toolhead.manual_move((None, None, self.horizontal_move_z), self.lift_speed)
             if is_end:
                 # end of calibration
                 self._finalize_calibration()
