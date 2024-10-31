@@ -1,6 +1,6 @@
 // Basic scheduling functions and startup/shutdown code.
 //
-// Copyright (C) 2016-2021  Kevin O'Connor <kevin@koconnor.net>
+// Copyright (C) 2016-2024  Kevin O'Connor <kevin@koconnor.net>
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -205,10 +205,11 @@ sched_wake_tasks(void)
     SchedStatus.tasks_status = TS_REQUESTED;
 }
 
-// Check if tasks need to be run
+// Check if tasks busy (called from low-level timer dispatch code)
 uint8_t
-sched_tasks_busy(void)
+sched_check_set_tasks_busy(void)
 {
+    // Return busy if tasks never idle between two consecutive calls
     if (SchedStatus.tasks_busy >= TS_REQUESTED)
         return 1;
     SchedStatus.tasks_busy = SchedStatus.tasks_status;
