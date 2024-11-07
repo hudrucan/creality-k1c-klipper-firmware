@@ -1267,7 +1267,7 @@ See also: [extended g-code commands](G-Codes.md#z_thermal_adjust).
 #sensor:
 #   Name of a single temperature sensor to use as a temperature source. E.g.
 #   'temperature_sensor frame', 'extruder', 'heater_bed' etc. If this option
-#   is used the other sensor options are not used. 
+#   is used the other sensor options are not used.
 #sensor_type:
 #sensor_pin:
 #min_temp:
@@ -4666,11 +4666,14 @@ scale.
 sensor_type:
 #   This must be one of the supported sensor types, see below.
 #counts_per_gram:
-#   The number of sensor counts that indicates 1 gram of force. This is
-#   calculated by the CALIBRATE_LOAD_CELL command.
+#   The floating point number of sensor counts that indicates 1 gram of force.
+#   This value is calculated by the CALIBRATE_LOAD_CELL command.
 #reference_tare_counts:
-#   This is the tare value, in raw sensor counts, taken when CALIBRATE_LOAD_CELL
+#   The integer tare value, in raw sensor counts, taken when CALIBRATE_LOAD_CELL
 #   is run. This is the default tare value when klipper starts up.
+#reverse:
+#   Reverses the polarity of the load cell. This is a boolean value, the
+#   default is False.
 ```
 
 #### HX711
@@ -4810,7 +4813,7 @@ sensor_type:
 #   Additional time to wait before taring the probe in seconds. This allows any
 #   vibrations to settle and bowden tubes time to flex etc. This improves
 #   repeatability. If the continuous_tare_filter is used this may be set to 0.
-#tare_samples: 
+#tare_samples:
 #   The number of samples to use when automatically taring the load_cell before
 #   each probe. The default value is: sample_per_second * (1 / 60) * 4. This
 #   collects samples from 4 cycles of 60Hz mains power to cancel power line

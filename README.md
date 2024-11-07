@@ -36,12 +36,12 @@ tearing filters (requires [Jupyter](https://jupyter.org/))
 
 #### Merged PRs
 * [Bulk ADS Sensors](https://github.com/Klipper3d/klipper/pull/6555)
+* [Add input_mux and vref options to ADS1220 sensor](https://github.com/Klipper3d/klipper/pull/6713)
 
-### Issues
-
-* ADS1220: allow selecting the Reference and Input channels. Currently it
-defaults to  
-* 
+### Known Issues
+* Users have reported "Timer Too Close" when probing
+* Load cell calibration crashes is entered twice
+* Float/int mismatch between for reference_tare_counts
 
 ---
 

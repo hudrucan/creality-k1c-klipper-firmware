@@ -1460,7 +1460,7 @@ is enabled.
 - `COMPONENT`: if multiple thermal adjustments are defined use `COMPONENT` to
 specify which one to adjust.
 - `ENABLE`: Enable or disable the Z thermal adjustment. Disabling does not
-remove any adjustment already applied, but will freeze the current adjustment 
+remove any adjustment already applied, but will freeze the current adjustment
 value - this prevents potentially unsafe downward Z movement. Re-enabling can
 potentially cause upward tool movement as the adjustment is updated and applied.
 - `TEMP_COEFF`: allows run-time tuning of the adjustment temperature coefficient

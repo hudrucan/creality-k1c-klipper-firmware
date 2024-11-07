@@ -197,7 +197,7 @@ option.
 Pre-compiled SciPi builds are available for Python 3 on 32 bit Raspberry Pi
 systems. 32 bit + Python 3 is strongly recommended because it will streamline
 your install experience. It does work with Python 2 but installation can take
-30+ minutes and require installing additional tools. 
+30+ minutes and require installing additional tools.
 
 ```bash
 ~/klippy-env/bin/pip install scipy

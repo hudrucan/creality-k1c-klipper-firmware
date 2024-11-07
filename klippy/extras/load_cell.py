@@ -4,15 +4,10 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-# Printer class that controls a load cell
-
 from . import hx71x
 from . import ads1220
 from .bulk_sensor import BatchWebhooksClient
 import logging, collections
-
-class SaturationException(Exception):
-    pass
 
 # Helper for event driven webhooks (i.e. non polling based data source)
 class WebhooksHelper(object):
@@ -45,8 +40,8 @@ class WebhooksHelper(object):
         wh.register_mux_endpoint(path, key, value, self._add_api_client)
 
 # Adapter for WebhooksHelper that transforms the response using a function
-# Anything that implements the add_client contact can be a mgs source
-# outputs to its own clients
+# Anything that implements the add_client contract can be a message source
+# Outputs to its own clients
 class WebhooksTransformer(WebhooksHelper):
     def __init__(self, printer, msg_source, transform_fn):
         super(WebhooksTransformer, self).__init__(printer)
@@ -82,6 +77,8 @@ class WebhooksTransformer(WebhooksHelper):
         self.client_cbs.append(client_cb)
         self._start()
 
+
+# Class for handling commands related ot load cells
 class LoadCellCommandHelper:
     def __init__(self, config, load_cell):
         try:
@@ -93,16 +90,8 @@ class LoadCellCommandHelper:
         name_parts = config.get_name().split()
         self.name = name_parts[-1]
         self.register_commands(self.name)
-        logging.info("Registering commands as: %s" % (self.name,))
         if len(name_parts) == 1:
-            # TODO: when this is a [load_cell_probe], what should happen here?
-            # TODO: What if there are multiple probes?
-            # TODO: Duplicate names: [load_cell foo] [load_cell_probe foo] ??
-            if (self.name == "load_cell"
-                    or not config.has_section("load_cell")):
-                logging.info("Registering default commands for: %s"
-                             % (self.name,))
-                #self.register_commands(None)
+            self.register_commands(None)
 
     def register_commands(self, name):
         # Register commands
@@ -186,6 +175,7 @@ class LoadCellCommandHelper:
         gcmd.respond_info("Sample range / sensor capacity: %.5f%%"
                           % ((max_pct - min_pct) / 2.))
 
+# Class to guide the user through calibrating a load cell
 class LoadCellGuidedCalibrationHelper:
     def __init__(self, printer, load_cell):
         self.printer = printer
@@ -201,27 +191,29 @@ class LoadCellGuidedCalibrationHelper:
             "Complete calibration with the ACCEPT command.\n"
             "Use the ABORT command to quit.")
 
+    def verify_no_active_calibration(self,):
+        try:
+            self.gcode.register_command('TARE', 'dummy')
+        except self.printer.config_error as e:
+            raise self.gcode.error(
+                "Already Calibrating a Load Cell. Use ABORT to quit.")
+        self.gcode.register_command('TARE', None)
+
     def register_commands(self):
+        self.verify_no_active_calibration()
         register_command = self.gcode.register_command
         register_command("ABORT", self.cmd_ABORT, desc=self.cmd_ABORT_help)
         register_command("ACCEPT", self.cmd_ACCEPT, desc=self.cmd_ACCEPT_help)
         register_command("TARE", self.cmd_TARE, desc=self.cmd_TARE_help)
         register_command("CALIBRATE", self.cmd_CALIBRATE,
                          desc=self.cmd_CALIBRATE_help)
-    def _avg_counts(self):
-        try:
-            return self.load_cell.avg_counts()
-        except SaturationException:
-            raise self.printer.command_error(
-                "ERROR: Some load cell readings were saturated!\n"
-                " (100% load). Use less force.")
 
     # convert the delta of counts to a counts/gram metric
     def counts_per_gram(self, grams, cal_counts):
         return float(abs(int(self._tare_counts - cal_counts))) / grams
 
-    # calculate min grams that the load cell can register
-    # given tare bias, at saturation
+    # calculate max force that the load cell can register
+    # given tare bias, at saturation in kilograms
     def capacity_kg(self, counts_per_gram):
         range_min, range_max = self.load_cell.saturation_range()
         return (int((range_max - abs(self._tare_counts)) / counts_per_gram)
@@ -255,7 +247,7 @@ class LoadCellGuidedCalibrationHelper:
 
     cmd_TARE_help = "Tare the load cell"
     def cmd_TARE(self, gcmd):
-        self._tare_counts = self._avg_counts()
+        self._tare_counts = self.load_cell.avg_counts()
         self._counts_per_gram = None  # require re-calibration on tare
         self.tare_percent = self.load_cell.counts_to_percent(self._tare_counts)
         gcmd.respond_info("Load cell tare value: %.2f%% (%i)"
@@ -270,8 +262,11 @@ class LoadCellGuidedCalibrationHelper:
 
     cmd_CALIBRATE_help = "Enter the load cell value in grams"
     def cmd_CALIBRATE(self, gcmd):
+        if self._tare_counts is None:
+            gcmd.respond_info("You must use TARE first.")
+            return
         grams = gcmd.get_float("GRAMS", minval=50., maxval=25000.)
-        cal_counts = self._avg_counts()
+        cal_counts = self.load_cell.avg_counts()
         cal_percent = self.load_cell.counts_to_percent(cal_counts)
         c_per_g = self.counts_per_gram(grams, cal_counts)
         cap_kg = self.capacity_kg(c_per_g)
@@ -292,7 +287,7 @@ class LoadCellGuidedCalibrationHelper:
                 "ERROR: Tare and Calibration readings are less than 1% "
                 "different!\n"
                 "Use more force when calibrating or a higher sensor gain.")
-        # only set _counter_per_gram after all errors are raised
+        # only set _counts_per_gram after all errors are raised
         self._counts_per_gram = c_per_g
         if cap_kg < 1.:
             gcmd.respond_info("WARNING: Load cell capacity is less than 1kg!\n"
@@ -406,11 +401,13 @@ class LoadCell:
         self.sensor = sensor   # must implement BulkSensorAdc
         buffer_size = sensor.get_samples_per_second() // 2
         self._force_buffer = collections.deque(maxlen=buffer_size)
-        self.reference_tare_counts = config.getfloat('reference_tare_counts',
+        self.reference_tare_counts = config.getint('reference_tare_counts',
                                                    default=None)
         self.tare_counts = self.reference_tare_counts
         self.counts_per_gram = config.getfloat('counts_per_gram',
                                    minval=MIN_COUNTS_PER_GRAM, default=None)
+        self.is_reversed = config.getboolean('reverse', default=False)
+        self.reverse = -1 if self.is_reversed else 1
         LoadCellCommandHelper(config, self)
         # webhooks support
         self.wh_transformer = WebhooksTransformer(printer, sensor,
@@ -441,7 +438,7 @@ class LoadCell:
             # [time, grams, counts, tare_counts]
             samples.append([row[0], self.counts_to_grams(row[1]), row[1],
                             self.tare_counts])
-        return {'data': samples, 'errors': errors, 'overflows': overflows }
+        return {'data': samples, 'errors': errors, 'overflows': overflows}
 
     # get internal events of force data
     def add_client(self, callback):
@@ -457,19 +454,20 @@ class LoadCell:
             raise self.printer.command_error("Invalid counts per gram value")
         if tare_counts is None:
             raise self.printer.command_error("Missing tare counts")
-        self.counts_per_gram = abs(counts_per_gram)
+        self.counts_per_gram = counts_per_gram
         self.reference_tare_counts = int(tare_counts)
         configfile = self.printer.lookup_object('configfile')
         configfile.set(self.config_name, 'counts_per_gram',
-                       "%.5f" % (counts_per_gram,))
+                       "%.5f" % (self.counts_per_gram,))
         configfile.set(self.config_name, 'reference_tare_counts',
-                       "%.5f" % (tare_counts,))
+                       "%i" % (self.reference_tare_counts,))
         self.printer.send_event("load_cell:calibrate", self)
 
     def counts_to_grams(self, sample):
         if not self.is_calibrated() or not self.is_tared():
             return None
-        return float(sample - self.tare_counts) / self.counts_per_gram
+        sample_delta = float(sample - self.tare_counts)
+        return self.reverse * (sample_delta / self.counts_per_gram)
 
     # The maximum range of the sensor based on its bit width
     def saturation_range(self):
@@ -543,8 +541,8 @@ class LoadCell:
     def get_status(self, eventtime):
         status = self._force_g()
         status.update({'is_calibrated': self.is_calibrated(),
-                       'reference_tare_counts': self.reference_tare_counts,
                        'counts_per_gram': self.counts_per_gram,
+                       'reference_tare_counts': self.reference_tare_counts,
                        'tare_counts': self.tare_counts})
         return status
 
