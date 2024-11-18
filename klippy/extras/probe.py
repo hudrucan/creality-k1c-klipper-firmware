@@ -397,7 +397,6 @@ class ProbePointsHelper:
         self.finalize_callback = finalize_callback
         self.probe_points = default_points
         self.name = config.get_name()
-        self.name = config.get_name()
         if len(self.name.split()) > 1:
             self.prefix = "_".join(self.name.split()[1:])
         else:
