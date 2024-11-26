@@ -254,7 +254,6 @@
     #define __VTOR_PRESENT             1U
     #warning "__VTOR_PRESENT not defined in device header file; using default!"
   #endif
-
   #ifndef __NVIC_PRIO_BITS
     #define __NVIC_PRIO_BITS          3U
     #warning "__NVIC_PRIO_BITS not defined in device header file; using default!"
@@ -3020,7 +3019,6 @@ __STATIC_INLINE void TZ_SAU_Disable(void)
   @{
  */
 
-
 /**
   \brief   Set Debug Authentication Control Register
   \details writes to Debug Authentication Control register.
@@ -3086,7 +3084,6 @@ __STATIC_INLINE uint32_t TZ_DCB_GetAuthCtrl_NS(void)
   \brief    Functions that access the Debug Identification Block.
   @{
  */
-
 
 /**
   \brief   Get Debug Authentication Status Register
