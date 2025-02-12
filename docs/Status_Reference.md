@@ -313,8 +313,6 @@ The following information is available for each `[load_cell name]`:
 - 'force_g': The force in grams, averaged over the last polling period.
 - 'min_force_g': The minimum force in grams, over the last polling period.
 - 'max_force_g': The maximum force in grams, over the last polling period.
-- 'std_force': The standard deviation of the force in grams, over the last
-polling period.
 
 ## load_cell_probe
 

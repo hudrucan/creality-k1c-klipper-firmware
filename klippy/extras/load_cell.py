@@ -7,7 +7,13 @@
 from . import hx71x
 from . import ads1220
 from .bulk_sensor import BatchWebhooksClient
-import logging, collections
+import logging, collections, itertools
+# We want either Python 3's zip() or Python 2's izip() but NOT 2's zip():
+zip_impl = zip
+try:
+    from itertools import izip as zip_impl # python 2.x izip
+except ImportError: # will be Python 3.x
+    pass
 
 # Helper for event driven webhooks (i.e. non polling based data source)
 class WebhooksHelper(object):
@@ -77,14 +83,16 @@ class WebhooksTransformer(WebhooksHelper):
         self.client_cbs.append(client_cb)
         self._start()
 
+# alternative to numpy's column selection:
+def select_column(data, column_idx):
+    return list(zip_impl(*data))[column_idx]
+
+def avg(data):
+    return sum(data) / len(data)
 
 # Class for handling commands related ot load cells
 class LoadCellCommandHelper:
     def __init__(self, config, load_cell):
-        try:
-            import numpy as np
-        except:
-            raise config.error("LoadCell requires the numpy module")
         self.printer = config.get_printer()
         self.load_cell = load_cell
         name_parts = config.get_name().split()
@@ -135,7 +143,6 @@ class LoadCellCommandHelper:
 
     cmd_LOAD_CELL_DIAGNOSTIC_help = "Check the health of the load cell"
     def cmd_LOAD_CELL_DIAGNOSTIC(self, gcmd):
-        import numpy as np
         gcmd.respond_info("Collecting load cell data for 10 seconds...")
         collector = self.load_cell.get_collector()
         reactor = self.printer.get_reactor()
@@ -149,7 +156,7 @@ class LoadCellCommandHelper:
             gcmd.respond_info("Sensor reported no errors")
         if not samples:
             raise gcmd.error("No samples returned from sensor!")
-        counts = np.asarray(samples)[:, 2].astype(int)
+        counts = select_column(samples, 2)
         range_min, range_max = self.load_cell.saturation_range()
         good_count = 0
         saturation_count = 0
@@ -158,7 +165,6 @@ class LoadCellCommandHelper:
                 saturation_count += 1
             else:
                 good_count += 1
-        unique_counts = np.unique(counts)
         gcmd.respond_info("Samples Collected: %i" % (len(samples)))
         if len(samples) > 2:
             sensor_sps = self.load_cell.sensor.get_samples_per_second()
@@ -167,9 +173,9 @@ class LoadCellCommandHelper:
                               "configured: %.1f" % (sps, sensor_sps))
         gcmd.respond_info("Good samples: %i, Saturated samples: %i, Unique"
                           " values: %i" % (good_count, saturation_count,
-                          len(unique_counts)))
-        max_pct = self.load_cell.counts_to_percent(np.amax(counts))
-        min_pct = self.load_cell.counts_to_percent(np.amin(counts))
+                          len(set(counts))))
+        max_pct = self.load_cell.counts_to_percent(max(counts))
+        min_pct = self.load_cell.counts_to_percent(min(counts))
         gcmd.respond_info("Sample range: [%.2f%% to %.2f%%]"
                           % (min_pct, max_pct))
         gcmd.respond_info("Sample range / sensor capacity: %.5f%%"
@@ -481,7 +487,6 @@ class LoadCell:
     # read 1 second of load cell data and average it
     # performs safety checks for saturation
     def avg_counts(self, num_samples=None):
-        import numpy as np
         if num_samples is None:
             num_samples = self.sensor.get_samples_per_second()
         samples, errors = self.get_collector().collect_min(num_samples)
@@ -495,8 +500,7 @@ class LoadCell:
             if sample[2] >= range_max or sample[2] <= range_min:
                 raise self.printer.command_error(
                     "Some samples are saturated (+/-100%)")
-        counts = np.asarray(samples)[:, 2].astype(float)
-        return np.average(counts)
+        return avg(select_column(samples, 2))
 
     def _on_sample(self, msg):
         if not (self.is_calibrated() and self.is_tared()):
@@ -507,13 +511,11 @@ class LoadCell:
         return True
 
     def _force_g(self):
-        if self.is_calibrated() and self.is_tared()\
-                and len(self._force_buffer) > 0:
-            import numpy as np
-            return {"force_g": round(np.average(self._force_buffer), 1),
-                    "min_force_g": round(np.min(self._force_buffer), 1),
-                    "max_force_g": round(np.max(self._force_buffer), 1),
-                    "std_force_g": round(np.std(self._force_buffer), 6)}
+        if (self.is_calibrated() and self.is_tared()
+                and len(self._force_buffer) > 0):
+            return {"force_g": round(avg(self._force_buffer), 1),
+                    "min_force_g": round(min(self._force_buffer), 1),
+                    "max_force_g": round(max(self._force_buffer), 1)}
         return {}
 
     def is_tared(self):

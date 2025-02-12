@@ -1,12 +1,41 @@
 # Load Cells
 
-This document describes Klipper's support for load cells and load cell based
-probes.
+This document describes Klipper's support for load cells. Basic load cell
+functionality can be used to read force data and to weigh things like filament.
+A calibrated force sensor is an important part of a load cell based probe.
 
 ## Related Documentation
 
-* [load_cell](Config_Reference.md#load_cell) Config Reference
-* [load_cell](G-Codes.md#load_cell) G-Code Commands
+* [load_cell Config Reference](Config_Reference.md#load_cell)
+* [load_cell G-Code Commands](G-Codes.md#load_cell)
+* [load_cell Status Reference](Status_Reference.md#load_cell)
+
+## Using `LOAD_CELL_DIAGNOSTIC`
+
+When you first connect a load cell its good practice to check for issues by
+running `LOAD_CELL_DIAGNOSTIC`. This tool collects 10 seconds of data from the
+load cell and resport statistics:
+
+```
+$ LOAD_CELL_DIAGNOSTIC
+// Collecting load cell data for 10 seconds...
+// Samples Collected: 3211
+// Measured samples per second: 332.0
+// Good samples: 3211, Saturated samples: 0, Unique values: 900
+// Sample range: [4.01% to 4.02%]
+// Sample range / sensor capacity: 0.00524%
+```
+
+Things you can check with this data:
+* The configured sample rate of the sensor should be close to the 'Measured
+samples per second' value. If it is not you may have a configuration or wiring
+issue.
+* 'Saturated samples' should be 0. If you have saturated samples it means the
+load sell is seeing more force than it can measure.
+* 'Unique values' should be a large percentage of the 'Samples
+Collected' value. If 'Unique values' is 1 it is very likely a wiring issue.
+* Tap or push on the sensor while `LOAD_CELL_DIAGNOSTIC` runs. If
+things are working correctly ths should increase the 'Sample range'.
 
 ## Calibrating a Load Cell
 
@@ -54,32 +83,23 @@ it is much larger you could have used a higher gain setting in the sensor or a
 more sensitive load cell. This isn't as critical for 32bit and 24bit sensors but
 is much more critical for low bit width sensors.
 
-## Using `LOAD_CELL_DIAGNOSTIC`
-
-When you first connect a load cell its good practice to check for issues by
-running `LOAD_CELL_DIAGNOSTIC`. This tool collects 10 seconds of data from the
-load cell and resport statistics:
+## Reading Force Data
+Force data can be read with a GCode command:
 
 ```
-$ LOAD_CELL_DIAGNOSTIC
-// Collecting load cell data for 10 seconds...
-// Samples Collected: 3211
-// Measured samples per second: 332.0
-// Good samples: 3211, Saturated samples: 0, Unique values: 900
-// Sample range: [4.01% to 4.02%]
-// Sample range / sensor capacity: 0.00524%
+READ_LOAD_CELL
+// 10.6g (1.94%)
 ```
 
-Things you can check with this data:
-* The configured sample rate of the sensor should be close to the 'Measured
-samples per second' value. If it is not you may have a configuration or wiring
-issue.
-* 'Saturated samples' should be 0. If you have saturated samples it means the
-load sell is seeing more force than it can measure.
-* 'Unique values' should be a good a larger percentage of the 'Samples
-Collected' value. If 'Unique values' is 1 it is very likely a wiring issue.
-* Tap or push on the sensor while `LOAD_CELL_DIAGNOSTIC` runs. If
-things are working correctly ths should increase the 'Sample range'.
+Data is also continuously read and can be consumed from the load_cell printer
+object in a macro:
+
+```
+{% set grams = printer.load_cell.force_g %}
+```
+
+This provides an average force over the last 1 second, similar to how
+temperature sensors work.
 
 ## Viewing Live Load Cell Graphs
 
