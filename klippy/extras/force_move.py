@@ -131,12 +131,11 @@ class ForceMove:
         x = gcmd.get_float('X', curpos[0])
         y = gcmd.get_float('Y', curpos[1])
         z = gcmd.get_float('Z', curpos[2])
-        clear = gcmd.get('CLEAR', '').lower()
-        clear_axes = "".join([a for a in "xyz" if a in clear])
-        logging.info("SET_KINEMATIC_POSITION pos=%.3f,%.3f,%.3f clear=%s",
-                     x, y, z, clear_axes)
-        toolhead.set_position([x, y, z, curpos[3]], homing_axes="xyz")
-        toolhead.get_kinematics().clear_homing_state(clear_axes)
-
+        logging.info("SET_KINEMATIC_POSITION pos=%.3f,%.3f,%.3f", x, y, z)
+        toolhead.set_position([x, y, z, curpos[3]], homing_axes=(0, 1, 2))
+        # this is a temporary feature until we merge the proper stuff
+        clear = gcmd.get('CLEAR', '').upper()
+        if 'Z' in clear and hasattr(toolhead.get_kinematics(), "note_z_not_homed"):
+            toolhead.get_kinematics().note_z_not_homed()
 def load_config(config):
     return ForceMove(config)

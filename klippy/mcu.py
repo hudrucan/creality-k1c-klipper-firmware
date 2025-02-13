@@ -224,7 +224,7 @@ class MCU_trsync:
         return params['trigger_reason']
 
 TRSYNC_TIMEOUT = 0.050
-TRSYNC_SINGLE_MCU_TIMEOUT = 0.50
+TRSYNC_SINGLE_MCU_TIMEOUT = 0.250
 
 class TriggerDispatch:
     def __init__(self, mcu):
