@@ -900,41 +900,61 @@ class LoadCellEndstop:
 
     def _handle_load_cell_tare(self, lc):
         if lc is self._load_cell:
-            logging.info("load cell tare event: %s" % (lc.get_tare_counts(),))
-            self.set_endstop_range(lc.get_tare_counts())
+            # logging.info("load cell tare event: %s" % (lc.get_tare_counts(),))
+            self.set_endstop_range(int(lc.get_tare_counts()))
 
-    def set_endstop_range(self, tare_counts):
-        if not self._load_cell.is_calibrated():
-            raise self.printer.command_error("Load cell not calibrated")
-        tare_counts = int(tare_counts)
-        self.tare_counts = tare_counts
+    def _get_safety_range(self):
         counts_per_gram = self._load_cell.get_counts_per_gram()
         # calculate the safety band
-        reference_tare = self._load_cell.get_reference_tare_counts()
-        safety_margin = int(counts_per_gram * self.safety_limit_grams)
-        safety_min = int(reference_tare - safety_margin)
-        safety_max = int(reference_tare + safety_margin)
-        # narrow to trigger band:
+        zero = self._load_cell.get_reference_tare_counts()
+        safety_counts = int(counts_per_gram * self.safety_limit_grams)
+        return int(zero - safety_counts), int(zero + safety_counts)
+
+    def _get_trigger_range(self):
+        counts_per_gram = self._load_cell.get_counts_per_gram()
         trigger_margin = int(counts_per_gram * self.trigger_force_grams)
-        trigger_min = max(tare_counts - trigger_margin, safety_min)
-        trigger_max = min(tare_counts + trigger_margin, safety_max)
+        tare = self.tare_counts
+        return tare - trigger_margin, tare + trigger_margin
+
+    def _get_filter_range(self, safety_min, safety_max):
         # the filter is restricted to no more than +/- 2^Q_12 - 1 grams (2048)
         # this cant be changed without also changing from q12 format in MCU
         safe_bits = (Q12_INT_BITS - 1)
-        filter_margin = math.floor(counts_per_gram * (2 ** safe_bits))
-        filter_min = max(tare_counts - filter_margin, safety_min)
-        filter_max = min(tare_counts + filter_margin, safety_max)
+        counts_per_gram = self._load_cell.get_counts_per_gram()
+        filter_margin = abs(math.floor(counts_per_gram * (2 ** safe_bits)))
+        tare = self.tare_counts
+        # TODO: could this be moved to the MCU?
+        return (max(safety_min, tare - filter_margin),
+                min(safety_max, tare + filter_margin))
+
+    def _get_filter_converter(self):
         # truncate extra bits for sensors with a large counts_per_gram
+        safe_bits = (Q12_INT_BITS - 1)
+        counts_per_gram = self._load_cell.get_counts_per_gram()
         storage_bits = int(math.ceil(math.log(counts_per_gram, 2)))
         rounding_shift = int(max(0, storage_bits - safe_bits))
         # grams per count, in rounded units
         grams_per_count = 1. / (counts_per_gram / (2 ** rounding_shift))
-        logging.info("Set endstop range: %s, %s, %s" % (trigger_min, trigger_max, tare_counts))
+        return grams_per_count, rounding_shift
+
+    def set_endstop_range(self, tare_counts):
+        cmd_err = self.printer.command_error
+        if not self._load_cell.is_calibrated():
+            raise cmd_err("Probe aborted, Load cell not calibrated")
+        # update internal tare value
+        tare_counts = int(tare_counts)
+        self.tare_counts = tare_counts
+        safety_min, safety_max = self._get_safety_range()
+        filter_min, filter_max = self._get_filter_range(safety_min, safety_max)
+        trigger_min, trigger_max = self._get_trigger_range()
+        if trigger_min < safety_min or trigger_max > safety_max:
+            raise cmd_err("Probe aborted, trigger force exceeds safety range")
+        # counts to grams conversion factors
+        grams_per_count, rounding_shift = self._get_filter_converter()
         args = [self._oid, safety_min, safety_max, filter_min, filter_max,
                 trigger_min, trigger_max, tare_counts,
                 as_fixedQ12(self.trigger_force_grams),
                 rounding_shift, as_fixedQ12(grams_per_count)]
-
         self._set_range_cmd.send(args)
 
     # pauses for the last move to complete and then tares the load_cell
