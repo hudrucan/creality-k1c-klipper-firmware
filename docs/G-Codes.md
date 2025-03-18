@@ -732,8 +732,8 @@ seconds of load cell data and reports statistics that can help you verify proper
 operation of the load cell. This command can be run on both calibrated and
 uncalibrated load cells.
 
-### CALIBRATE_LOAD_CELL
-`CALIBRATE_LOAD_CELL [LOAD_CELL=<config_name>]`: Start the guided calibration
+### LOAD_CELL_CALIBRATE
+`LOAD_CELL_CALIBRATE [LOAD_CELL=<config_name>]`: Start the guided calibration
 utility. Calibration is a 3 step process:
 1. First you remove all load from the load cell and run the `TARE` command
 1. Next you apply a known load to the load cell and run the
@@ -742,14 +742,14 @@ utility. Calibration is a 3 step process:
 
 You can cancel the calibration process at any time with `ABORT`.
 
-### TARE_LOAD_CELL
-`TARE_LOAD_CELL [LOAD_CELL=<config_name>]`: This works just like the tare button
+### LOAD_CELL_TARE
+`LOAD_CELL_TARE [LOAD_CELL=<config_name>]`: This works just like the tare button
 on digital scale. It sets the current raw reading of the load cell to be the
 zero point reference value. The response is the percentage of the sensors range
 that was read and the raw value in counts.
 
-### READ_LOAD_CELL load_cell="name"
-`READ_LOAD_CELL [LOAD_CELL=<config_name>]`:
+### LOAD_CELL_READ load_cell="name"
+`LOAD_CELL_READ [LOAD_CELL=<config_name>]`:
 This command takes a reading from the load cell. The response is the percentage
 of the sensors range that was read and the raw value in counts. If the load cell
 is calibrated a force in grams is also reported.

@@ -22,24 +22,19 @@ grams. All the safety limits are in gram units for your convenience. If the
 on the toolhead.
 * `reference_tare_counts`: this is the baseline tare value and can only be
 changed by config. Think of this as the "true zero" of the load cell. This value
-works with `safety_limit_grams` to limit the maximum force on the toolhead.
-* `safety_limit_grams`: this is the maximum absolute force in relation to
+works with `safety_limit` to limit the maximum force on the toolhead.
+* `safety_limit`: this is the maximum absolute force in relation to
 `reference_tare_counts` that the probe will allow while homing or probing. If
 the load_cell_endstop sees this force it will shut down the machine.
 Klipper does not retract the probe when doing a single `PROBE`. This can result
 in force applied to the toolhead at the end of a probing cycle. If you repeat
 the `PROBE` command, load_cell_probe will tear the endstop at the current force.
 Multiple cycles of this could result in ever-increasing force on the toolhead.
-`safety_limit_grams` stops this cycle from running out of control. If this limit
+`safety_limit` stops this cycle from running out of control. If this limit
 is violated the resulting error is `!! Load cell endstop: too much force!`.
-* `trigger_count`: This setting is similar to the one on regular pin based
-endstops. It is intended to debounce the trigger when a pin doesn't make "solid"
-contact. In the load_cell_probe this defaults to 1, meaning no debouncing.
-Because load cells are analog devices being measured by an ADC they
-don't generally need to be debounced.
-* `trigger_force_grams`: this is the force in grams that triggers the endstop to
+* `trigger_force`: this is the force in grams that triggers the endstop to
 halt the homing move. When a homing move starts the endstop tears itself with
-the current reading from the load cell. `trigger_force_grams` is an absolute
+the current reading from the load cell. `trigger_force` is an absolute
 delta from the tear value. There is always some overshoot of this value, so be
 conservative. e.g. a setting of 100g may result in 350g of peak force before the
 toolhead stops. This overshoot will increase with a low sample rate and/or
@@ -220,10 +215,10 @@ the XL with `11.2`Hz. This is probably a safe range to experiment with. This
 value should be increased only until normal drift due to bowden tube force is
 eliminated. Setting this value too high will result in slow triggering and
 excess force going through the tool head.
-* Keep `continuous_tare_trigger_force_grams` low. The default is `40`g. The
+* Keep `trigger_force` low. The default is `40`g. The
 filter keeps the internal grams value very close to 0 so a large trigger force
 is not needed.
-* Keep `safety_limit_grams` to a conservative value. The default value is 1Kg
+* Keep `safety_limit` to a conservative value. The default value is 1Kg
 and should keep your toolhead safe while experimenting. If you hit this limit
 the `continuous_tare_highpass` value may be too high, or your
 `reference_tare_counts` may need adjusting to be closer to the sensors 0 at

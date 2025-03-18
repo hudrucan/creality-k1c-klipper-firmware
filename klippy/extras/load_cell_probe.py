@@ -5,8 +5,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging, math, time
 
-import numpy
-
 import mcu
 from . import probe, load_cell, hx71x, ads1220
 
@@ -96,7 +94,7 @@ def as_fixedQ12(val):
     return int(val * (2 ** Q12_FRAC_BITS))
 
 # Digital filter designer and container
-class DigialFilter:
+class DigitalFilter:
     def __init__(self, sps, cfg_error, highpass=None, lowpass=None,
                     notches=None, notch_quality=2.0):
         self.filter_sections = None
@@ -162,10 +160,10 @@ class ForceGraph:
         self.time = time
         self.force = force
         # prepare arrays for numpy to save re-allocation costs
-        self.time_float32 = np.asarray(time, dtype=np.float32)
-        ones = np.ones(len(time), dtype=np.float32)
+        self.time_float32 = np.asarray(time, dtype=np.float64)
+        ones = np.ones(len(time), dtype=np.float64)
         self.time_nd = np.vstack([self.time_float32, ones]).T
-        self.force_nd = np.asarray(force, dtype=np.float32)
+        self.force_nd = np.asarray(force, dtype=np.float64)
 
     # Least Squares on x[] y[] points, returns ForceLine
     def _lstsq_line(self, x_stacked, y):
@@ -217,8 +215,8 @@ class ForceGraph:
     # construct a line from 2 points
     def _points_to_line(self, a, b):
         import numpy as np
-        t = np.asarray([[a.time, 1], [b.time, 1]], dtype=np.float32)
-        f = np.asarray([a.force, b.force], dtype=np.float32)
+        t = np.asarray([[a.time, 1], [b.time, 1]], dtype=np.float64)
+        f = np.asarray([a.force, b.force], dtype=np.float64)
         mx, b = self._lstsq_line(t, f)
         return ForceLine(mx, b)
 
@@ -236,19 +234,21 @@ class ForceGraph:
         noise = []
         for i in range(len(f)):
             noise.append(f[i] - line.find_force(t[i]))
-        return np.std(noise, dtype=np.float32)
+        return np.std(noise, dtype=np.float64)
 
     # true if the reference force won't be confused for noise in the graph chunk
     # reference force must be more than 3 standard deviations away from the line
     # at the reference index
-    def is_clear_signal(self, start_idx, end_idx, line, reference_idx, force_idx):
+    def is_clear_signal(self, start_idx, end_idx, line, reference_idx,
+                        force_idx):
         import numpy as np
         noise = self.noise_std(start_idx, end_idx, line)
         noise_3_std = noise * 3 # TODO: can this be lowered safely?
         base_force = line.find_force(self.time[reference_idx])
         return abs(base_force - self.force[force_idx]) > noise_3_std
 
-    # return the first index that exceeds the median force between start and end:
+    # return the first index that exceeds the median force between
+    # start and end index
     def _split_by_force(self, start_idx, end_idx):
         import numpy as np
         start_f = self.force_nd[start_idx]
@@ -261,6 +261,7 @@ class ForceGraph:
         for i in scan:
             if self.force[i] > median_f:
                 return i
+        return None
 
     # break a tap event down into 6 points and 5 lines:
     #    *-----*|       /*-----*
@@ -306,12 +307,14 @@ class ForceGraph:
         midpoint_idx = self._split_by_force(pullback_cruise_idx,
                                             break_contact_idx)
         # elbow finding success depends on their being good signal-to-noise:
-        clear_dwell = self.is_clear_signal(dwell_start_idx, dwell_end_idx,
-                                            l3, dwell_end_idx, midpoint_idx - 1)
-        clear_decomp = self.is_clear_signal(break_contact_idx, pullback_end_idx,
-                                            l5, break_contact_idx,midpoint_idx)
-        use_curve_optimization = clear_dwell & clear_decomp
-        if use_curve_optimization :
+        use_curve_optimization = False
+        if midpoint_idx is not None:
+            clear_dwell = self.is_clear_signal(dwell_start_idx, dwell_end_idx,
+                                l3, dwell_end_idx, midpoint_idx - 1)
+            clear_decomp = self.is_clear_signal(break_contact_idx,
+                          pullback_end_idx, l5, break_contact_idx, midpoint_idx)
+            use_curve_optimization = clear_dwell and clear_decomp
+        if use_curve_optimization:
             # perform iterative refinement
             l4_start = self.line(pullback_cruise_idx, midpoint_idx, discard, 0)
             # real break contact index
@@ -319,7 +322,7 @@ class ForceGraph:
             l4_end = self.line(midpoint_idx, break_contact_idx)
             l5 = self.line(break_contact_idx, pullback_end_idx,
                            discard, discard)
-            # l4 is built from 2 points:
+            # a synthetic l4 is built from 2 points:
             l4 = self._points_to_line(l4_start.intersection(l3),
                                       l4_end.intersection(l5))
         else:
@@ -362,36 +365,52 @@ def elbow_r_squared(force, time, elbow_idx, widths, left_line, right_line):
                                 elbow_idx, elbow_idx + width, right_line)
         r2 = 1 - ((l_dv + r_dv) / (l_tv + r_tv))
         # returns r squared as a percentage. -350% is bad. 80% is good!
-        r_squared.append(round((r2 * 100.), 1))
+        r_squared.append(round((float(r2) * 100.), 1))
     return r_squared
+
+class ValidationError(Exception):
+    def __init__(self, error_tuple):
+        self.error_code = error_tuple[0]
+        self.message = error_tuple[1]
+        pass
+
+MOVE_NOT_FOUND = ('MOVE_NOT_FOUND', 'A Move references time t')
+COASTING_MOVE_ACCELERATION = ('COASTING_MOVE_ACCELERATION',
+    'Probing move is accelerating/decelerating which is invalid')
+TOO_FEW_PROBING_MOVES = ('TOO_FEW_PROBING_MOVES',
+                         '5 Probing moves expected but there were fewer')
+TOO_MANY_PROBING_MOVES = ('TOO_MANY_PROBING_MOVES',
+                          '5 Probing moves expected but there were more')
+
+TAP_CHRONOLOGY = ('TAP_CHRONOLOGY', 'Tap failed chronology check')
+TAP_ELBOW_ROTATION = ('TAP_ELBOW_ROTATION', 'Tap failed elbow rotation check')
+TAP_BREAK_CONTACT_TOO_EARLY = ('TAP_BREAK_CONTACT_TOO_EARLY',
+                               'Tap break-contact time too early, invalid')
+TAP_BREAK_CONTACT_TOO_LATE = ('TAP_BREAK_CONTACT_TOO_LATE',
+                              'Tap break-contact time too late, invalid')
+TAP_PULLBACK_TOO_SHORT = ('TAP_PULLBACK_TOO_SHORT',
+              'Tap break-contact time too late, pullback move may be too short')
+TAP_SEGMENT_TOO_SHORT = ('TAP_SEGMENT_TOO_SHORT',
+                 'A tap segment is too short to perform r squared calculations')
 
 # TODO: maybe discard points can scale with sample rate from 1 to 3
 DEFAULT_DISCARD_POINTS = 3
+# Move index constants. The PROBE_START move may be deleted from the trapq if
+# the probe takes longer than 30s. Indexing from the end of the list
+# is always consistent:
+PROBE_START = -6
+PROBE_CRUISE = -5
+PROBE_HALT = -4
+PULLBACK_START = -3
+PULLBACK_CRUISE = -2
+PULLBACK_END = -1
 class TapAnalysis(object):
     def __init__(self, printer, samples, tap_filter,
                  discard=DEFAULT_DISCARD_POINTS):
         import numpy as np
         self.printer = printer
+        self.samples = samples
         self.discard = discard
-        np_samples = np.array(samples)
-        self.time = np_samples[:, 0]
-        self.force = tap_filter.filtfilt(np_samples[:, 1])
-        self.force_graph = ForceGraph(self.time, self.force)
-        self.sample_time = np.average(np.diff(self.time))
-        self.r_squared_widths = [int((n * 0.01) // self.sample_time)
-                                 for n in range(2, 7)]
-        trapq = printer.lookup_object('motion_report').trapqs['toolhead']
-        self.moves = self._extract_trapq(trapq)
-        self.home_end_time = self._recalculate_homing_end()
-        self.pullback_start_time = self.moves[3].print_time
-        self.pullback_end_time = (self.moves[5].print_time
-                                  + self.moves[5].move_t)
-        self.pullback_cruise_time = self.moves[4].print_time
-        self.pullback_duration = (self.pullback_end_time -
-                                         self.pullback_start_time)
-
-
-        self.position = self._extract_pos_history()
         self.is_valid = False
         self.tap_pos = None
         self.tap_points = []
@@ -399,12 +418,28 @@ class TapAnalysis(object):
         self.tap_angles = []
         self.tap_r_squared = None
         self.elapsed = 0.
+        self.errors = []
+        self.warnings = []
+        self.home_end_time = None
+        self.pullback_start_time = None
+        self.pullback_end_time = None
+        self.pullback_cruise_time = None
+        self.pullback_duration = None
+        self.position = None
+        nd_samples = np.asarray(samples, dtype=np.float64)
+        self.time = nd_samples[:, 0]
+        self.force = tap_filter.filtfilt(nd_samples[:, 1])
+        self.force_graph = ForceGraph(self.time, self.force)
+        trapq = printer.lookup_object('motion_report').trapqs['toolhead']
+        self.moves = self._extract_trapq(trapq)
+        gcode = self.printer.lookup_object('gcode')
+        self.report_error = gcode.respond_raw
 
     # build toolhead position history for the time/force graph
     def _extract_pos_history(self):
         z_pos = []
         for time in self.time:
-            z_pos.append(self.get_toolhead_position(time))
+            z_pos.append(self.get_toolhead_position(float(time)))
         return z_pos
 
     def get_toolhead_position(self, print_time):
@@ -429,87 +464,100 @@ class TapAnalysis(object):
                 return pos
             else:
                 continue
-        raise self.printer.command_error("Move not found, that is impossible!")
+        raise ValidationError(MOVE_NOT_FOUND)
 
     # adjust move_t of move 1 to match the toolhead position of move 2
     def _recalculate_homing_end(self):
         #TODO: REVIEW: This takes some logical shortcuts, does it need to be
         # more generalized? e.g. to all 3 axes?
-        homing_move = self.moves[-5]
-        halt_move = self.moves[-4]
+        homing_move = self.moves[PROBE_CRUISE]
+        halt_move = self.moves[PROBE_HALT]
         # acceleration should be 0! This is the 'coasting' move:
         if homing_move.accel != 0.:
-            raise self.printer.command_error(
-                    'Unexpected acceleration in coasting move')
+            raise ValidationError(COASTING_MOVE_ACCELERATION)
         # how long did it take to get to end_z?
         homing_move.move_t = abs((halt_move.start_z - homing_move.start_z)
                                  / homing_move.start_v)
         return homing_move.print_time + homing_move.move_t
 
     def _extract_trapq(self, trapq):
-        moves, _ = trapq.extract_trapq(self.time[0], self.time[-1])
+        moves, _ = trapq.extract_trapq(float(self.time[0]), float(self.time[-1]))
         moves_out = []
         for move in moves:
             moves_out.append(TrapezoidalMove(move))
             # DEBUG: enable to see trapq contents
             # logging.info("trapq move: %s" % (moves_out[-1].to_dict(),))
-        num_moves = len(moves_out)
-        if num_moves < 5 or num_moves > 6:
-            raise self.printer.command_error(
-                "Expected tap to be 5 to 6 moves long was %s" % (num_moves,))
         return moves_out
 
     def analyze(self):
         t_start = time.time()
+        try:
+            self._try_analysis()
+        except ValidationError as ve:
+            self.errors.append(ve.error_code)
+            logging.warning(ve.message)
+            self.report_error('!! %s' % (ve.message,))
+        self.elapsed = time.time() - t_start
+
+    # try analysis, throws exceptions
+    def _try_analysis(self):
+        import numpy as np
+        num_moves = len(self.moves)
+        if num_moves < 5:
+            raise ValidationError(TOO_FEW_PROBING_MOVES)
+        elif num_moves > 6:
+            raise ValidationError(TOO_MANY_PROBING_MOVES)
+
+        self.home_end_time = self._recalculate_homing_end()
+        self.pullback_start_time = self.moves[PULLBACK_START].print_time
+        self.pullback_end_time = (self.moves[PULLBACK_END].print_time +
+                                  self.moves[PULLBACK_END].move_t)
+        self.pullback_cruise_time = self.moves[PULLBACK_CRUISE].print_time
+        self.pullback_duration = (self.pullback_end_time -
+                                  self.pullback_start_time)
+        self.position = self._extract_pos_history()
+
         points, lines = self.force_graph.tap_decompose(self.home_end_time,
                            self.pullback_start_time, self.pullback_cruise_time,
                            self.pullback_duration)
         self.tap_points = points
         self.tap_lines = lines
-        self.elapsed = time.time() - t_start
-        if not self.validate_order():
-            logging.info('Tap failed chronology check')
-            return
+        self.validate_order()
         self.tap_angles = self.calculate_angles()
-        if not self.validate_elbow_rotation():
-            logging.info('Tap failed elbow rotation check')
-            return
+        self.validate_elbow_rotation()
         break_contact_time = points[4].time
-        if not self.validate_break_contact_time(break_contact_time):
-            logging.info('Tap break-contact time invalid')
-            return
+        self.validate_break_contact_time(break_contact_time)
         self.tap_pos = self.get_toolhead_position(break_contact_time)
-        if not self.validate_elbow_clearance():
-            logging.info('Elbow too near tap ends')
-            return
+        # calculate the average time between samples
+        self.sample_time = np.average(np.diff(self.time))
+        self.r_squared_widths = [int((n * 0.01) // self.sample_time)
+                                 for n in range(2, 7)]
+        self.validate_elbow_clearance()
         self.tap_r_squared = self.calculate_r_squared()
         self.is_valid = True
-
-    # validate peak force within 50ms of homing end
-    def validate_peak_force(self, peak_force_index, home_end_index):
-        delta = peak_force_index - home_end_index
-        delta_t = abs(self.sample_time * delta)
-        return delta <= 1 or delta_t < 0.05
 
     # validate that a set of ForcePoint objects are in chronological order
     def validate_order(self):
         p = self.tap_points
-        return (p[0].time < p[1].time < p[2].time
-                < p[3].time < p[4].time < p[5].time)
+        if not (p[0].time < p[1].time < p[2].time
+                < p[3].time < p[4].time < p[5].time):
+            raise ValidationError(TAP_CHRONOLOGY)
 
     # Validate that the rotations between lines form a tap shape
     def validate_elbow_rotation(self):
         a1, a2, a3, a4 = self.tap_angles
         # with two polarities there are 2 valid tap shapes:
-        return ((a1 > 0 and a2 < 0 and a3 < 0 and a4 > 0) or
-                (a1 < 0 and a2 > 0 and a3 > 0 and a4 < 0))
+        if not ((a1 > 0 and a2 < 0 and a3 < 0 and a4 > 0) or
+                (a1 < 0 and a2 > 0 and a3 > 0 and a4 < 0)):
+            raise ValidationError(TAP_ELBOW_ROTATION)
 
     # check for space around elbows to calculate r_squared
     def validate_elbow_clearance(self):
         width = self.r_squared_widths[-1]
         start_idx = self.force_graph.index_near(self.tap_points[1].time) + width
         end_idx = self.force_graph.index_near(self.tap_points[4].time) - width
-        return start_idx > 0 and end_idx < len(self.time)
+        if not (start_idx > 0 and end_idx < len(self.time)):
+            raise ValidationError(TAP_SEGMENT_TOO_SHORT)
 
     # The proposed break contact point must fall inside the first
     # 3/4s of the pullback move
@@ -518,15 +566,11 @@ class TapAnalysis(object):
         end_t = self.pullback_end_time
         safety_margin = (end_t - start_t) / 4.
         if break_contact_time < start_t:
-            logging.info('Tap break-contact time too early, invalid')
+            raise ValidationError(TAP_BREAK_CONTACT_TOO_EARLY)
         elif break_contact_time > end_t:
-            logging.info('Tap break-contact time too late, invalid')
+            raise ValidationError(TAP_BREAK_CONTACT_TOO_LATE)
         elif break_contact_time > (end_t - safety_margin):
-            logging.info('Tap break-contact time too late,'
-                         ' pullback move may be too short')
-        else:
-            return True
-        return False
+            raise ValidationError(TAP_PULLBACK_TOO_SHORT)
 
     def calculate_angles(self):
         l1, l2, l3, l4, l5 = self.tap_lines
@@ -558,6 +602,8 @@ class TapAnalysis(object):
             'tap_r_squared': self.tap_r_squared,
             'elapsed': self.elapsed,
             'is_valid': self.is_valid,
+            'errors': self.errors,
+            'warnings': self.warnings
         }
 
 # support for validating individual options in a config list
@@ -715,19 +761,18 @@ class LoadCellProbeSessionHelper:
         return epos[:3], is_good
 
     def probe_cycle(self, probexy, params):
+        epos, is_good = self.single_tap(params['probe_speed'])
         retries = 0
-        while retries <= self.bad_tap_retries:
+        while not is_good and retries < self.bad_tap_retries:
+            self.retract(probexy, epos, params)
+            self.clean_nozzle(retries)
             epos, is_good = self.single_tap(params['probe_speed'])
-            if is_good:
-                return epos
-            if retries < self.bad_tap_retries:
-                self.retract(probexy, epos, params)
-                self.clean_nozzle(retries)
-                retries += 1
-                # TODO: maybe goto the probing location after cleaning?
-            else:
-                raise self.printer.command_error(
-                    'Bad taps exceeded bad_tap_retries')
+            retries += 1
+        if not is_good:
+            raise self.printer.command_error(
+                                    'Too many bad taps. (bad_tap_retries: %i)'
+                                    %  (self.bad_tap_retries,))
+        return epos
 
     def retract(self, probexy, pos, params):
         toolhead = self.printer.lookup_object('toolhead')
@@ -790,13 +835,13 @@ class ProbeSessionContext():
                                    below=math.floor(sps / 2.), max_len=5)
         notch_quality = config.getfloat("tap_filter_notch_quality",
                                         minval=0.5, maxval=3.0, default=2.0)
-        self.tap_filter = DigialFilter(sps, config.error, notches=tap_notches,
-                                       notch_quality=notch_quality)
+        self.tap_filter = DigitalFilter(sps, config.error, notches=tap_notches,
+                                        notch_quality=notch_quality)
         # webhooks support
-        self.wh_helper = load_cell.WebhooksHelper(printer)
+        self.clients = load_cell.ApiClientHelper(printer)
         name = config.get_name()
         header = {"header": ["probe_tap_event"]}
-        self.wh_helper.add_mux_endpoint("load_cell_probe/dump_taps",
+        self.clients.add_mux_endpoint("load_cell_probe/dump_taps",
                                         "load_cell_probe", name, header)
 
     def load_module(self, config, name, default):
@@ -836,7 +881,7 @@ class ProbeSessionContext():
         ppa = TapAnalysis(self.printer, samples, self.tap_filter)
         ppa.analyze()
         # broadcast tap event data:
-        self.wh_helper.send({'tap': ppa.to_dict()})
+        self.clients.send({'tap': ppa.to_dict()})
         is_good = ppa.is_valid and not self.bad_tap_module.is_bad_tap(ppa)
         if is_good:
             epos[2] = ppa.tap_pos[2]
@@ -864,8 +909,6 @@ class LoadCellEndstop:
         self._oid = self._mcu.create_oid()
         self._dispatch = mcu.TriggerDispatch(self._mcu)
         self._rest_time = 1. / float(sensor.get_samples_per_second())
-        self.settling_time = config.getfloat('settling_time', default=0.375,
-                                             minval=0, maxval=1)
 
         # Static triggering
         self.trigger_force_grams = config.getfloat('trigger_force',
@@ -892,15 +935,12 @@ class LoadCellEndstop:
                 above=(highpass or 0.), below=(lowpass or max_filter_frequency))
         notch_quality = config.getfloat("continuous_tare_notch_quality",
                                         minval=0.5, maxval=6.0, default=2.0)
-        self.continuous_trigger_force = config.getfloat(
-            'continuous_tare_trigger_force',
-            minval=1., maxval=250., default=40.)
         if (lowpass or notches) and highpass is None:
             raise config.error("Option %s is section %s must be set to use"
                     " continuous tare" % (hp_option, config.get_name(),))
 
-        self._continuous_tare_filter = DigialFilter(sps, config.error, highpass,
-                                                lowpass, notches, notch_quality)
+        self._continuous_tare_filter = DigitalFilter(sps, config.error,
+                                     highpass, lowpass, notches, notch_quality)
         # activate/deactivate gcode
         gcode_macro = printer.load_object(config, 'gcode_macro')
         self.position_endstop = config.getfloat('z_offset')
@@ -979,40 +1019,61 @@ class LoadCellEndstop:
 
     def _handle_load_cell_tare(self, lc):
         if lc is self._load_cell:
-            logging.info("load cell tare event: %s" % (lc.get_tare_counts(),))
-            self.set_endstop_range(lc.get_tare_counts())
+            # logging.info("load cell tare event: %s" % (lc.get_tare_counts(),))
+            self.set_endstop_range(int(lc.get_tare_counts()))
 
-    def set_endstop_range(self, tare_counts):
-        if not self._load_cell.is_calibrated():
-            raise self.printer.command_error("Load cell not calibrated")
-        tare_counts = int(tare_counts)
-        self.tare_counts = tare_counts
+    def _get_safety_range(self):
         counts_per_gram = self._load_cell.get_counts_per_gram()
         # calculate the safety band
-        reference_tare = self._load_cell.get_reference_tare_counts()
-        safety_margin = int(counts_per_gram * self.safety_limit_grams)
-        safety_min = int(reference_tare - safety_margin)
-        safety_max = int(reference_tare + safety_margin)
-        # narrow to trigger band:
+        zero = self._load_cell.get_reference_tare_counts()
+        safety_counts = int(counts_per_gram * self.safety_limit_grams)
+        return int(zero - safety_counts), int(zero + safety_counts)
+
+    def _get_trigger_range(self):
+        counts_per_gram = self._load_cell.get_counts_per_gram()
         trigger_margin = int(counts_per_gram * self.trigger_force_grams)
-        trigger_min = max(tare_counts - trigger_margin, safety_min)
-        trigger_max = min(tare_counts + trigger_margin, safety_max)
+        tare = self.tare_counts
+        return tare - trigger_margin, tare + trigger_margin
+
+    def _get_filter_range(self, safety_min, safety_max):
         # the filter is restricted to no more than +/- 2^Q_12 - 1 grams (2048)
         # this cant be changed without also changing from q12 format in MCU
         safe_bits = (Q12_INT_BITS - 1)
-        filter_margin = math.floor(counts_per_gram * (2 ** safe_bits))
-        filter_min = max(tare_counts - filter_margin, safety_min)
-        filter_max = min(tare_counts + filter_margin, safety_max)
+        counts_per_gram = self._load_cell.get_counts_per_gram()
+        filter_margin = abs(math.floor(counts_per_gram * (2 ** safe_bits)))
+        tare = self.tare_counts
+        # TODO: could this be moved to the MCU?
+        return (max(safety_min, tare - filter_margin),
+                min(safety_max, tare + filter_margin))
+
+    def _get_filter_converter(self):
         # truncate extra bits for sensors with a large counts_per_gram
+        safe_bits = (Q12_INT_BITS - 1)
+        counts_per_gram = self._load_cell.get_counts_per_gram()
         storage_bits = int(math.ceil(math.log(counts_per_gram, 2)))
         rounding_shift = int(max(0, storage_bits - safe_bits))
         # grams per count, in rounded units
         grams_per_count = 1. / (counts_per_gram / (2 ** rounding_shift))
+        return grams_per_count, rounding_shift
+
+    def set_endstop_range(self, tare_counts):
+        cmd_err = self.printer.command_error
+        if not self._load_cell.is_calibrated():
+            raise cmd_err("Probe aborted, Load cell not calibrated")
+        # update internal tare value
+        tare_counts = int(tare_counts)
+        self.tare_counts = tare_counts
+        safety_min, safety_max = self._get_safety_range()
+        filter_min, filter_max = self._get_filter_range(safety_min, safety_max)
+        trigger_min, trigger_max = self._get_trigger_range()
+        if trigger_min < safety_min or trigger_max > safety_max:
+            raise cmd_err("Probe aborted, trigger force exceeds safety range")
+        # counts to grams conversion factors
+        grams_per_count, rounding_shift = self._get_filter_converter()
         args = [self._oid, safety_min, safety_max, filter_min, filter_max,
                 trigger_min, trigger_max, tare_counts,
-                as_fixedQ12(self.continuous_trigger_force),
+                as_fixedQ12(self.trigger_force_grams),
                 rounding_shift, as_fixedQ12(grams_per_count)]
-
         self._set_range_cmd.send(args)
 
     # pauses for the last move to complete and then tares the load_cell

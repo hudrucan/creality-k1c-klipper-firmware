@@ -101,3 +101,5 @@ communication with the Klipper developers.
 - [TSL1401CL filament width sensor](TSL1401CL_Filament_Width_Sensor.md)
 - [Hall filament width sensor](Hall_Filament_Width_Sensor.md)
 - [Eddy Current Inductive probe](Eddy_Probe.md)
+- [Load Cells](Load_Cell.md)
+- [Load Cell Probes](Load_Cell_Probe.md)

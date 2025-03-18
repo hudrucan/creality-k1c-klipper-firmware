@@ -3462,8 +3462,9 @@ run_current:
 #stealthchop_threshold: 0
 #   The velocity (in mm/s) to set the "stealthChop" threshold to. When
 #   set, "stealthChop" mode will be enabled if the stepper motor
-#   velocity is below this value. The default is 0, which disables
-#   "stealthChop" mode.
+#   velocity is below this value. Note that the "sensorless homing"
+#   code may temporarily override this setting during homing
+#   operations. The default is 0, which disables "stealthChop" mode.
 #coolstep_threshold:
 #   The velocity (in mm/s) to set the TMC driver internal "CoolStep"
 #   threshold to. If set, the coolstep feature will be enabled when
@@ -3575,8 +3576,9 @@ run_current:
 #stealthchop_threshold: 0
 #   The velocity (in mm/s) to set the "stealthChop" threshold to. When
 #   set, "stealthChop" mode will be enabled if the stepper motor
-#   velocity is below this value. The default is 0, which disables
-#   "stealthChop" mode.
+#   velocity is below this value. Note that the "sensorless homing"
+#   code may temporarily override this setting during homing
+#   operations. The default is 0, which disables "stealthChop" mode.
 #driver_MULTISTEP_FILT: True
 #driver_IHOLDDELAY: 8
 #driver_TPOWERDOWN: 20
@@ -3778,8 +3780,9 @@ run_current:
 #stealthchop_threshold: 0
 #   The velocity (in mm/s) to set the "stealthChop" threshold to. When
 #   set, "stealthChop" mode will be enabled if the stepper motor
-#   velocity is below this value. The default is 0, which disables
-#   "stealthChop" mode.
+#   velocity is below this value. Note that the "sensorless homing"
+#   code may temporarily override this setting during homing
+#   operations. The default is 0, which disables "stealthChop" mode.
 #coolstep_threshold:
 #   The velocity (in mm/s) to set the TMC driver internal "CoolStep"
 #   threshold to. If set, the coolstep feature will be enabled when
@@ -3912,8 +3915,9 @@ run_current:
 #stealthchop_threshold: 0
 #   The velocity (in mm/s) to set the "stealthChop" threshold to. When
 #   set, "stealthChop" mode will be enabled if the stepper motor
-#   velocity is below this value. The default is 0, which disables
-#   "stealthChop" mode.
+#   velocity is below this value. Note that the "sensorless homing"
+#   code may temporarily override this setting during homing
+#   operations. The default is 0, which disables "stealthChop" mode.
 #coolstep_threshold:
 #   The velocity (in mm/s) to set the TMC driver internal "CoolStep"
 #   threshold to. If set, the coolstep feature will be enabled when
@@ -4762,13 +4766,14 @@ sensor_type:
 #   This must be one of the supported sensor types, see below.
 #counts_per_gram:
 #   The floating point number of sensor counts that indicates 1 gram of force.
-#   This value is calculated by the CALIBRATE_LOAD_CELL command.
+#   This value is calculated by the LOAD_CELL_CALIBRATE command.
 #reference_tare_counts:
-#   The integer tare value, in raw sensor counts, taken when CALIBRATE_LOAD_CELL
+#   The integer tare value, in raw sensor counts, taken when LOAD_CELL_CALIBRATE
 #   is run. This is the default tare value when klipper starts up.
-#reverse:
-#   Reverses the polarity of the load cell. This is a boolean value, the
-#   default is False.
+#sensor_orientation:
+#   Change the sensor's orientation. Can be either 'normal' or 'inverted'.
+#   The default is 'normal'. Use 'inverted' if the sensor reports a
+#   decreasing force value when placed under load.
 ```
 
 #### HX711
@@ -4874,18 +4879,20 @@ sensor_type:
 #   This must be one of the supported bulk ADC sensor types and support
 #   load cell endstops on the mcu.
 #counts_per_gram:
+#reverse:
 #reference_tare_counts:
 #   These parameters must be configured before the probe will operate.
 #   See the [load_cell] section for further details.
 #safety_limit: 1000
 #   The safe limit for probing force relative to the reference_tare_counts on
 #   the load_cell. The default is +/-1Kg.
-#trigger_force: 50.0
+#trigger_force: 75.0
 #   The force that the probe will trigger at. 50g is the default.
 #continuous_tare_highpass: 0.8
-#   Enable optional continuous taring while homing & probing to reject drift.
-#   The value is a frequency, in Hz, below which drift will be ignored.This
-#   option requires the SciPy library. Default: None
+#   Enable optional (but strongly recommended) continuous taring while homing
+#   & probing to reject drift. The value is a frequency, in Hz, below which
+#   drift will be ignored. This option requires the SciPy library.
+#   Default: None
 #continuous_tare_lowpass: 100.0
 #   The value is a frequency, in Hz, above which high frequency noise in the
 #   load cell will be igfiltered outnored. If this option is set,
@@ -4898,24 +4905,18 @@ sensor_type:
 #   Controls how narrow the range of frequencies are that the notch filter
 #   removes. Larger numbers produce a narrower filter. Minimum value is 0.5 and
 #   maximum is 3.0. Default: 2.0
-#continuous_tare_trigger_force_grams: 40.0
-#   The force that the probe will trigger at whe using the continuous tearing
-#   filter. 40g is the default.
 #trigger_count: 1
 #   The number of samples over the trigger_force_grams threshold that will cause
 #   the probe to trigger. 1 is the default.
-#settling_time: 0.375
-#   Additional time to wait before taring the probe in seconds. This allows any
-#   vibrations to settle and bowden tubes time to flex etc. This improves
-#   repeatability. If the continuous_tare_filter is used this may be set to 0.
 #tare_samples:
 #   The number of samples to use when automatically taring the load_cell before
 #   each probe. The default value is: sample_per_second * (1 / 60) * 4. This
 #   collects samples from 4 cycles of 60Hz mains power to cancel power line
 #   noise.
 #pullback_dist:
-#   The length of the pullback move. The default is 0.1mm and work well for
-#   most beds. On very springy beds this may need to be increased.
+#   The length of the pullback move. The default is 0.2mm and is a safe
+#   starting point for most beds. This can be decreased if the motion system
+# is very ridgid
 #pullback_speed:
 #   The speed of the pullback move. The default value is 1.0 micron per sensor
 #   sample. Increasing this value will speed up the move and reduce accuracy.
@@ -5143,7 +5144,7 @@ Octoprint as they will conflict, and 1 will fail to initialize
 properly likely aborting your print.
 
 If you use Octoprint and stream gcode over the serial port instead of
-printing from virtual_sd, then remo **M1** and **M0** from *Pausing commands*
+printing from virtual_sd, then remove **M1** and **M0** from *Pausing commands*
 in *Settings > Serial Connection > Firmware & protocol* will prevent
 the need to start print on the Palette 2 and unpausing in Octoprint
 for your print to begin.

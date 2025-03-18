@@ -46,12 +46,9 @@ class HX71xBase:
         chip_smooth = self.sps * UPDATE_INTERVAL * 2
         self.ffreader = bulk_sensor.FixedFreqReader(mcu, chip_smooth, "<i")
         # Process messages in batches
-        self.batch_bulk = bulk_sensor.BatchBulkHelper(self.printer, self._process_batch, self._start_measurements,
-                                                      self._finish_measurements, UPDATE_INTERVAL)
-        # publish raw samples to the socket
-        dump_path = "%s/dump_%s" % (sensor_type, sensor_type)
-        hdr = {'header': ('time', 'counts', 'value')}
-        self.batch_bulk.add_mux_endpoint(dump_path, "sensor", self.name, hdr)
+        self.batch_bulk = bulk_sensor.BatchBulkHelper(
+            self.printer, self._process_batch, self._start_measurements,
+            self._finish_measurements, UPDATE_INTERVAL)
         # Command Configuration
         self.query_hx71x_cmd = None
         self.config_endstop_cmd = None

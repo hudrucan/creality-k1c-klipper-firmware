@@ -39,7 +39,7 @@ things are working correctly ths should increase the 'Sample range'.
 
 ## Calibrating a Load Cell
 
-Load cells are calibrated using the `CALIBRATE_LOAD_CELL` command. This is an
+Load cells are calibrated using the `LOAD_CELL_CALIBRATE` command. This is an
 interactive calibration utility that walks you though a 3 step process:
 1. First use the `TARE` command to establish the zero force value. This is the
 `reference_tare_counts` config value.
@@ -78,16 +78,17 @@ $ CALIBRATE GRAMS=555
 // Calibration value: -2.78% (-59803108), Counts/gram: 73039.78739,
 Total capacity: +/- 29.14Kg
 ```
-The `Total capacity` should be close to the rating of the load cell itself. If
-it is much larger you could have used a higher gain setting in the sensor or a
-more sensitive load cell. This isn't as critical for 32bit and 24bit sensors but
-is much more critical for low bit width sensors.
+The `Total capacity` should be close to the theoretical rating of the load cell
+based on the sensor's capacity. If it is much larger you could have used a
+higher gain setting in the sensor or a more sensitive load cell. This isn't as
+critical for 32bit and 24bit sensors but is much more critical for low bit width
+sensors.
 
 ## Reading Force Data
 Force data can be read with a GCode command:
 
 ```
-READ_LOAD_CELL
+LOAD_CELL_READ
 // 10.6g (1.94%)
 ```
 
@@ -100,6 +101,26 @@ object in a macro:
 
 This provides an average force over the last 1 second, similar to how
 temperature sensors work.
+
+## Taring a Load Cell
+Taring, sometimes called zeroing, sets the current weight reported by the
+load_cell to 0. This is useful for measuring relative to a known weight. e.g.
+when measuring a filament spool, using `LOAD_CELL_TARE` sets the weight to 0.
+Then as filament is printed the load_cell will report the weight of the
+filament used.
+
+```
+LOAD_CELL_TARE
+// Load cell tare value: 5.32% (445903)
+```
+
+The current tare value is reported in the printers status and can be read in
+a macro:
+
+```
+{% set tare_counts = printer.load_cell.tare_counts %}
+```
+
 
 ## Viewing Live Load Cell Graphs
 
